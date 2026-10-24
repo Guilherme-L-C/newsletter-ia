@@ -7,8 +7,8 @@ import sys
 from datetime import UTC, datetime
 
 from . import coletar as coleta
-from . import db, selecao, triar, validacao
-from .config import CONCORDANCIA_MIN
+from . import db, pagina, selecao, triar, validacao
+from .config import CONCORDANCIA_MIN, EDICOES_DIR
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -22,6 +22,7 @@ def _parser() -> argparse.ArgumentParser:
     u.add_argument("id")
     u.add_argument("valor", choices=("sim", "nao"))
     sub.add_parser("concordancia").add_argument("arquivo")
+    sub.add_parser("edicao").add_argument("arquivo")
     return p
 
 
@@ -57,6 +58,9 @@ def main(argv: list[str], agora: datetime | None = None, con=None, out=None, fon
     elif args.cmd == "util":
         selecao.marcar_util(con, args.id, args.valor == "sim")
         say("ok")
+    elif args.cmd == "edicao":
+        with open(args.arquivo) as f:
+            say(str(pagina.salvar_edicao(json.load(f), EDICOES_DIR)))
     elif args.cmd == "concordancia":
         with open(args.arquivo) as f:
             c = validacao.concordancia(json.load(f), con)

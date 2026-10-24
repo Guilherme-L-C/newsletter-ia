@@ -2,7 +2,7 @@
 
 Newsletter pessoal de IA montada direto das fontes de origem (labs, arXiv, GitHub, Hacker News, Hugging Face), sem passar por Instagram nem agregadores.
 
-Um timer coleta e guarda tudo num SQLite. Outro manda o `agy` (Antigravity CLI, cota do Google) dar nota e etiqueta a cada item. Na hora de ler, o Claude escolhe ~10 itens, confere os links e cria um **rascunho** no Gmail. Nada é enviado sozinho.
+Um timer coleta e guarda tudo num SQLite. Outro manda o `agy` (Antigravity CLI, cota do Google) dar nota e etiqueta a cada item. Na hora de ler, o Claude escolhe ~10 itens, confere os links e adiciona a edição da semana a uma **página HTML local**, uma seção por semana. Nada sai da máquina.
 
 > Projeto privado, feito para uso próprio numa máquina Linux sempre ligada. Não é um pacote para terceiros.
 
@@ -11,8 +11,8 @@ Um timer coleta e guarda tudo num SQLite. Outro manda o `agy` (Antigravity CLI, 
 ```
 04:30  coletar   APIs e feeds ──► SQLite (~/.local/state/newsletter-ia/itens.db)   estado: coletado
 05:00  triar     lotes de 15 ──► agy -p --mode plan --json-schema ──► nota/etiqueta  estado: triado
-sob    "monta a  Claude (skill montar-edicao) ──► candidatos ──► rascunho Gmail      estado: rascunhado
-demanda edição"  você envia ──► publicado        você descarta ──► reverter ──► triado
+sob    "monta a  Claude (skill montar-edicao) ──► candidatos ──► edicoes/semana-N.json
+demanda edição"  python3 -m newsletter_ia edicao ──► index.html (abre no navegador)  estado: publicado
 ```
 
 | Etapa | Quem faz | Custo |
@@ -38,19 +38,14 @@ Anthropic não tem feed (404) e fica fora da v1.
 - Linux com systemd de usuário e Python 3.12 (`/usr/bin/python3`)
 - `requests` (`pip install -r requirements.txt`; já vem no Python do sistema da máquina atual)
 - `agy` no `PATH`, logado
-- Claude Code com conector de Gmail, para a etapa de curadoria
+- Claude Code, para a etapa de curadoria
 
 ## Instalação
 
 ```bash
 git clone https://github.com/Guilherme-L-C/newsletter-ia.git ~/newsletter-ia
 cd ~/newsletter-ia
-python3 -m unittest tests.test_newsletter_ia        # 60 testes, sem rede
-
-# destinatário do rascunho (fora do repo, chmod 600)
-mkdir -p ~/.config/newsletter-ia
-echo '{"destinatario": "voce@exemplo.com"}' > ~/.config/newsletter-ia/config.json
-chmod 600 ~/.config/newsletter-ia/config.json
+python3 -m unittest tests.test_newsletter_ia        # 66 testes, sem rede
 
 # timers
 ln -sf ~/newsletter-ia/systemd/newsletter-ia-* ~/.config/systemd/user/
@@ -72,14 +67,16 @@ Todos os comandos rodam a partir da raiz do repo: `python3 -m newsletter_ia <com
 | `coletar` | Busca o que é novo em cada fonte (com 4 dias de margem) e grava. Sai com 1 se alguma fonte falhar; as outras seguem. |
 | `triar` | Manda até 150 itens/dia ao `agy`, em lotes de 15. Sai com 1 se o `agy` quebrar. |
 | `candidatos` | JSON com até 25 itens triados dos últimos 14 dias, no máximo 8 por fonte. |
-| `rascunhado ID...` | Marca os itens que entraram no rascunho. |
-| `publicado ID...` | Depois de enviar o e-mail. Só vale para itens em rascunho. |
-| `reverter ID...` | Rascunho descartado: itens voltam aos candidatos. |
+| `edicao ARQ.json` | Grava a edição da semana em `edicoes/semana-NNN.json` e regenera o `index.html`. Mesmo número substitui. |
+| `publicado ID...` | Marca os itens que entraram na edição (não voltam aos candidatos). |
+| `rascunhado ID...` / `reverter ID...` | Estado intermediário, para separar e devolver itens antes de publicar. |
 | `util ID sim\|nao` | Registra se o item foi útil. |
 | `amostra` | 20 itens espalhados pela faixa de notas, para validação. |
 | `concordancia ARQ.json` | Compara rótulos `{"id": "bom"\|"ruim"}` com a nota do `agy`; imprime `PASSOU` se ≥ 0,70. |
 
-Para a edição da semana, numa sessão do Claude Code: **"monta a edição"**. A skill [`montar-edicao`](skill/montar-edicao/SKILL.md) roda `candidatos`, escolhe, confere links, cria o rascunho e registra os estados.
+Para a edição da semana, numa sessão do Claude Code: **"monta a edição"**. A skill [`montar-edicao`](skill/montar-edicao/SKILL.md) roda `candidatos`, escolhe, confere links, escreve a edição, regenera a página e abre no navegador.
+
+A página fica em `~/segundo-cerebro/01-Projetos/newsletter-ia/index.html` (na vault, sincroniza com o Mac). Cada semana tem número, tema e as seções da edição; a mais recente fica no topo.
 
 ### Operação
 
@@ -125,6 +122,7 @@ newsletter_ia/       pacote (CLI em __main__.py)
   triar.py           prompt, chamada ao agy, validação da resposta
   selecao.py         candidatos e estados
   validacao.py       amostra e concordância
+  pagina.py          página HTML com todas as edições
 tests/               unittest, sem rede
 systemd/             units de coleta e triagem
 skill/montar-edicao/ skill do Claude Code
@@ -136,6 +134,7 @@ docs/                design (por quê, decisões) e plano de implementação
 - A validação inicial (0,75) teve pouco poder: 18 de 20 itens foram marcados "bom". O `agy` é mais rígido que o leitor.
 - Pendências menores registradas na revisão final: feed com data `-0000` derruba aquele feed; datas de RSS não são convertidas para UTC; o teto diário conta itens triados com sucesso, não enviados; títulos não têm quebras de linha removidas antes do prompt; acentos podem corromper em feed sem charset; `TimeoutStartSec=300` da coleta abaixo do pior caso.
 - A coleta do GitHub só vê repositórios criados no período; um repo antigo que explode depois não entra.
+- O `agy` dá nota 9 a 10 a repositórios novos e pessoais com README caprichado (0 a 1 estrela). Hoje a skill confere e descarta na mão; falta um filtro de estrelas mínimas na coleta.
 
 ## Próximos passos
 

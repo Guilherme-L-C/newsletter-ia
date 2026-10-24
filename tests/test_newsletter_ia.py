@@ -6,11 +6,12 @@ import subprocess
 import unittest
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from newsletter_ia import coletar as coleta
 from newsletter_ia import __main__ as cli
 from newsletter_ia.config import MARGEM_DIAS
-from newsletter_ia import db, selecao, triar, validacao
+from newsletter_ia import db, pagina, selecao, triar, validacao
 from newsletter_ia.fontes import arxiv, feeds, github, hf_papers, hn
 from newsletter_ia.modelo import Item, data_ou_agora, item_id
 
@@ -567,6 +568,53 @@ class TestCorrecoesDaRevisao(unittest.TestCase):
         triado(con, "https://exemplo.com/blog", fonte="hn", fonte_tipo="comunidade")
         marketing = {c["url"]: c["marketing"] for c in selecao.candidatos(con, AGORA)}
         self.assertEqual(marketing, {"https://openai.com/index/algo": True, "https://exemplo.com/blog": False})
+
+
+def edicao(numero, data="2026-10-24", tema="Agentes que se verificam", titulo="Paper A"):
+    return {"numero": numero, "data": data, "tema": tema, "nota": "nota da edição",
+            "secoes": [{"titulo": "Técnicas e pesquisa", "itens": [
+                {"titulo": titulo, "url": "https://arxiv.org/abs/1", "data": "2026-10-22", "fonte": "arxiv",
+                 "porque": "porque sim", "marketing": False},
+                {"titulo": "Post do lab", "url": "https://openai.com/x", "data": "2026-10-23", "fonte": "openai",
+                 "porque": "p", "marketing": True}]}]}
+
+
+class TestPagina(unittest.TestCase):
+    def test_semana_mais_recente_primeiro(self):
+        html = pagina.renderizar([edicao(1, tema="Tema um"), edicao(2, tema="Tema dois")])
+        self.assertLess(html.index("Tema dois"), html.index("Tema um"))
+        self.assertIn("Semana 2", html)
+
+    def test_item_tem_link_data_e_porque(self):
+        html = pagina.renderizar([edicao(1)])
+        self.assertIn('href="https://arxiv.org/abs/1"', html)
+        self.assertIn("22/10/2026", html)
+        self.assertIn("porque sim", html)
+
+    def test_marca_blog_do_lab(self):
+        self.assertIn("blog do próprio lab", pagina.renderizar([edicao(1)]))
+
+    def test_texto_externo_e_escapado(self):
+        html = pagina.renderizar([edicao(1, titulo='<script>alert(1)</script>')])
+        self.assertNotIn("<script>alert(1)", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_salvar_edicao_grava_json_e_regenera_index(self):
+        pasta = Path(tempfile.mkdtemp())
+        pagina.salvar_edicao(edicao(1), pasta)
+        pagina.salvar_edicao(edicao(2, tema="Outro tema"), pasta)
+        self.assertTrue((pasta / "edicoes" / "semana-001.json").exists())
+        index = (pasta / "index.html").read_text()
+        self.assertIn("Outro tema", index)
+        self.assertIn("Agentes que se verificam", index)
+
+    def test_salvar_mesma_semana_substitui(self):
+        pasta = Path(tempfile.mkdtemp())
+        pagina.salvar_edicao(edicao(1, tema="Velho"), pasta)
+        pagina.salvar_edicao(edicao(1, tema="Novo"), pasta)
+        index = (pasta / "index.html").read_text()
+        self.assertIn("Novo", index)
+        self.assertNotIn("Velho", index)
 
 
 class TestBanco(unittest.TestCase):

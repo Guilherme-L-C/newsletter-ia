@@ -7,6 +7,8 @@ STATE_DIR = Path.home() / ".local" / "state" / "newsletter-ia"
 CONFIG_PATH = Path.home() / ".config" / "newsletter-ia" / "config.json"
 DB_PATH = STATE_DIR / "itens.db"
 AGY_CWD = STATE_DIR / "agy-cwd"
+# Página das edições: na vault, para abrir no navegador e sincronizar com o Mac.
+EDICOES_DIR = Path.home() / "segundo-cerebro" / "01-Projetos" / "newsletter-ia"
 
 JANELA_DIAS = 14
 MAX_POR_FONTE = 8
