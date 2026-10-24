@@ -24,7 +24,7 @@ Página: `~/segundo-cerebro/01-Projetos/newsletter-ia/index.html` (uma seção p
        "porque": "uma ou duas linhas: por que importa para o Guilherme", "marketing": false}]}]}
    ```
    Seções: "Técnicas e pesquisa", "Mercado", "Repositório", "O que construir" (omita seção vazia). `marketing` = valor do candidato. Nada de item sem link e data.
-6. **Publique na página.** `python3 -m newsletter_ia edicao /tmp/edicao-N.json` (regenera o `index.html`), depois `python3 -m newsletter_ia publicado ID...` com os ids escolhidos (confira que o número impresso bate) e abra: `xdg-open ~/segundo-cerebro/01-Projetos/newsletter-ia/index.html`.
+6. **Publique na página.** `python3 -m newsletter_ia edicao /tmp/edicao-N.json` (regenera o `index.html`), depois `python3 -m newsletter_ia rascunhado ID...` e `python3 -m newsletter_ia publicado ID...` com os ids escolhidos (`publicado` só aceita itens em rascunho; confira que os dois números impressos batem) e abra: `xdg-open ~/segundo-cerebro/01-Projetos/newsletter-ia/index.html`.
 7. **Feedback.** Pergunte (em caixas de seleção) quais itens ele leu e achou úteis; para cada um: `python3 -m newsletter_ia util ID sim|nao`.
 
 Refazer a semana: escreva o JSON de novo com o mesmo `numero` e rode `edicao` (substitui).
