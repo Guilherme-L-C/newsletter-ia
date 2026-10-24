@@ -1,0 +1,8 @@
+[Unit]
+Description=Coleta diária de fontes de IA
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/newsletter-ia
+ExecStart=/usr/bin/python3 -m newsletter_ia coletar
+TimeoutStartSec=300

@@ -1,0 +1,9 @@
+[Unit]
+Description=Triagem diária da newsletter de IA pelo agy às 05:00
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Unit=newsletter-ia-triar.service
+
+[Install]
+WantedBy=timers.target

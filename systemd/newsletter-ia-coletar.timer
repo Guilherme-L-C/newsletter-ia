@@ -1,0 +1,9 @@
+[Unit]
+Description=Coleta diária de fontes de IA às 04:30
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Unit=newsletter-ia-coletar.service
+
+[Install]
+WantedBy=timers.target
