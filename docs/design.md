@@ -174,5 +174,5 @@ Mercado **não** vira seção própria: fica dentro do Radar. Ilustrações gera
 - Skill `montar-edicao` monta por seção, com editorial curto por seção (a decidir).
 - Coleta: **segunda rodada de pesquisa de fontes** para Ideias inovadoras, Analistas e Hardware, antes de mexer no código.
 
-**Ordem sugerida:** (1) pesquisar fontes para as duas seções novas; (2) atualizar este desenho; (3) plano de execução; (4) construir. A v1 (lista de ~10 itens) continua valendo e rodando até a v2 ficar pronta.
+**Ordem sugerida:** (1) pesquisar fontes para as três seções novas (Ideias inovadoras, Analistas, Hardware); (2) atualizar este desenho; (3) plano de execução; (4) construir. A v1 (lista de ~10 itens) continua valendo e rodando até a v2 ficar pronta.
 
