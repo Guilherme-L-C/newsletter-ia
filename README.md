@@ -1,145 +1,100 @@
 # newsletter-ia
 
-Newsletter pessoal de IA montada direto das fontes de origem (labs, arXiv, GitHub, Hacker News, Hugging Face), sem passar por Instagram nem agregadores.
+🇧🇷 [Leia em português](README.pt-BR.md)
 
-Um timer coleta e guarda tudo num SQLite. Outro manda o `agy` (Antigravity CLI, cota do Google) dar nota e etiqueta a cada item. Na hora de ler, o Claude escolhe ~10 itens, confere os links e adiciona a edição da semana a uma **página HTML local**, uma seção por semana. Nada sai da máquina.
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?logo=sqlite&logoColor=white)
+![systemd](https://img.shields.io/badge/systemd-timers-30D475)
+![Tests](https://img.shields.io/badge/tests-66%20passing-brightgreen)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 
-> Projeto privado, feito para uso próprio numa máquina Linux sempre ligada. Não é um pacote para terceiros.
+A personal weekly AI newsletter built straight from primary sources — research labs, arXiv, GitHub, Hacker News and Hugging Face — instead of social media and aggregators.
 
-## Como funciona
+A cheap pipeline does the heavy lifting: plain Python collects and deduplicates items, a small LLM scores them in batches, and Claude only steps in once a week to pick ~10 items, check the links and write the issue. Everything runs locally.
 
+> Built for my own always-on Linux box, so paths point to my machine. It is not a package for third parties, but the code and the design are open to read.
+
+## How it works
+
+```mermaid
+flowchart LR
+  F["Sources<br/>arXiv · HF Papers · HN<br/>GitHub · lab feeds"] -->|"04:30 collect<br/>(Python, no LLM)"| DB[("SQLite<br/>state: collected")]
+  DB -->|"05:00 triage<br/>batches of 15"| A["agy (Antigravity CLI)<br/>score + tag via JSON schema"]
+  A --> DB2[("state: triaged")]
+  DB2 -->|"on demand:<br/>'build the issue'"| C["Claude Code skill<br/>picks ~10, checks links, writes"]
+  C --> P["Weekly HTML page<br/>state: published"]
 ```
-04:30  coletar   APIs e feeds ──► SQLite (~/.local/state/newsletter-ia/itens.db)   estado: coletado
-05:00  triar     lotes de 15 ──► agy -p --mode plan --json-schema ──► nota/etiqueta  estado: triado
-sob    "monta a  Claude (skill montar-edicao) ──► candidatos ──► edicoes/semana-N.json
-demanda edição"  python3 -m newsletter_ia edicao ──► index.html (abre no navegador)  estado: publicado
-```
 
-| Etapa | Quem faz | Custo |
-|---|---|---|
-| Coleta e deduplicação | código Python (sem LLM) | zero |
-| Triagem em volume | `agy` | ~50 a 95 mil tokens de entrada por lote, até 10 lotes/dia |
-| Curadoria e escrita | Claude, pela skill | uma sessão por semana |
+| Stage | Done by | Cost |
+| :--- | :--- | :--- |
+| Collection and dedup | Python (no LLM) | zero |
+| Bulk triage | `agy`, capped at 150 items/day | ~50–95k input tokens per batch |
+| Curation and writing | Claude, through a skill | one session per week |
 
-## Fontes (v1)
+## Engineering highlights
 
-| Fonte | Como | Filtro |
-|---|---|---|
-| arXiv `cs.LG`, `cs.CL`, `cs.MA`, `cs.AI` | API Atom, 300 por categoria, 3 s entre chamadas | termo de IA no título **ou** paper presente no HF Daily Papers |
+- **Cost-aware LLM pipeline:** each stage uses the cheapest tool that can do the job; the expensive model only sees ~25 pre-ranked candidates.
+- **Structured output with validation:** triage responses must match a JSON schema and are rejected otherwise.
+- **Measuring the model, not trusting it:** `amostra` + `concordancia` compare the LLM's scores with human labels and only pass at ≥ 0.70 agreement.
+- **Failure isolation:** one broken source does not stop the others; the run exits non-zero so systemd and the journal show it.
+- **Explicit item lifecycle:** collected → triaged → drafted → published, with commands to revert.
+- **66 unit tests** that run offline in under a second.
+
+## Sources (v1)
+
+| Source | How | Filter |
+| :--- | :--- | :--- |
+| arXiv `cs.LG`, `cs.CL`, `cs.MA`, `cs.AI` | Atom API, 300 per category, 3 s between calls | AI term in the title **or** paper listed on HF Daily Papers |
 | Hugging Face Daily Papers | `api/daily_papers?sort=trending` | — |
-| Hacker News | Algolia `search_by_date` | ≥ 50 pontos |
-| GitHub | `search/repositories` (não existe API de trending) | criado no período, push nos últimos 30 dias, descarta salto de > 20 mil estrelas em < 7 dias |
+| Hacker News | Algolia `search_by_date` | ≥ 50 points |
+| GitHub | `search/repositories` (there is no trending API) | created in the window, pushed in the last 30 days, drops jumps of > 20k stars in < 7 days |
 | Feeds | DeepMind, HF blog, Microsoft Research, OpenAI, Interconnects, Import AI, Latent Space | — |
 
-Anthropic não tem feed (404) e fica fora da v1.
+## Running
 
-## Requisitos
-
-- Linux com systemd de usuário e Python 3.12 (`/usr/bin/python3`)
-- `requests` (`pip install -r requirements.txt`; já vem no Python do sistema da máquina atual)
-- `agy` no `PATH`, logado
-- Claude Code, para a etapa de curadoria
-
-## Instalação
+Requires Linux with user-level systemd, Python 3.12, `agy` logged in and Claude Code for the curation step.
 
 ```bash
 git clone https://github.com/Guilherme-L-C/newsletter-ia.git ~/newsletter-ia
 cd ~/newsletter-ia
-python3 -m unittest tests.test_newsletter_ia        # 66 testes, sem rede
+pip install -r requirements.txt
+python3 -m unittest tests.test_newsletter_ia      # 66 tests, no network
 
 # timers
 ln -sf ~/newsletter-ia/systemd/newsletter-ia-* ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now newsletter-ia-coletar.timer newsletter-ia-triar.timer
 
-# skill do Claude
+# Claude Code skill
 ln -sfn ~/newsletter-ia/skill/montar-edicao ~/.claude/skills/montar-edicao
 ```
 
-Antes de ligar os timers numa instalação nova, faça a validação inicial (ver [Validar a triagem](#validar-a-triagem)).
+Main commands (`python3 -m newsletter_ia <command>`): `coletar` (collect), `triar` (triage), `candidatos` (candidates as JSON), `edicao` (write the weekly issue and rebuild the page), `publicado` / `rascunhado` / `reverter` (item states), `amostra` and `concordancia` (validate the triage). Full reference in the [Portuguese README](README.pt-BR.md#uso).
 
-## Uso
-
-Todos os comandos rodam a partir da raiz do repo: `python3 -m newsletter_ia <comando>`.
-
-| Comando | O que faz |
-|---|---|
-| `coletar` | Busca o que é novo em cada fonte (com 4 dias de margem) e grava. Sai com 1 se alguma fonte falhar; as outras seguem. |
-| `triar` | Manda até 150 itens/dia ao `agy`, em lotes de 15. Sai com 1 se o `agy` quebrar. |
-| `candidatos` | JSON com até 25 itens triados dos últimos 14 dias, no máximo 8 por fonte. |
-| `edicao ARQ.json` | Grava a edição da semana em `edicoes/semana-NNN.json` e regenera o `index.html`. Mesmo número substitui. |
-| `publicado ID...` | Marca os itens que entraram na edição (não voltam aos candidatos). |
-| `rascunhado ID...` / `reverter ID...` | Estado intermediário, para separar e devolver itens antes de publicar. |
-| `util ID sim\|nao` | Registra se o item foi útil. |
-| `amostra` | 20 itens espalhados pela faixa de notas, para validação. |
-| `concordancia ARQ.json` | Compara rótulos `{"id": "bom"\|"ruim"}` com a nota do `agy`; imprime `PASSOU` se ≥ 0,70. |
-
-Para a edição da semana, numa sessão do Claude Code: **"monta a edição"**. A skill [`montar-edicao`](skill/montar-edicao/SKILL.md) roda `candidatos`, escolhe, confere links, escreve a edição, regenera a página e abre no navegador.
-
-A página fica em `~/segundo-cerebro/01-Projetos/newsletter-ia/index.html` (na vault, sincroniza com o Mac). Cada semana tem número, tema e as seções da edição; a mais recente fica no topo.
-
-### Operação
-
-```bash
-systemctl --user list-timers | grep newsletter
-journalctl --user -u newsletter-ia-coletar.service -n 30 --no-pager
-journalctl --user -u newsletter-ia-triar.service -n 30 --no-pager
-sqlite3 ~/.local/state/newsletter-ia/itens.db "select estado, count(*) from itens group by estado"
-```
-
-### Validar a triagem
-
-```bash
-python3 -m newsletter_ia triar
-python3 -m newsletter_ia amostra > /tmp/amostra.json
-# classifique cada id como "bom" ou "ruim" em /tmp/rotulos.json
-python3 -m newsletter_ia concordancia /tmp/rotulos.json
-```
-
-## Configuração
-
-Constantes em [`newsletter_ia/config.py`](newsletter_ia/config.py):
-
-| Constante | Valor | Para quê |
-|---|---|---|
-| `TETO_AGY_DIA` | 150 | itens enviados ao `agy` por dia |
-| `LOTE_AGY` | 15 | itens por chamada (~73 s) |
-| `CARGA_INICIAL_DIAS` | 7 | janela da primeira coleta |
-| `MARGEM_DIAS` | 4 | sobreposição entre coletas (fontes publicam com atraso) |
-| `JANELA_DIAS` | 14 | idade máxima de um candidato |
-| `MAX_POR_FONTE` / `N_CANDIDATOS` | 8 / 25 | limites da lista de candidatos |
-| `HN_PONTOS_MIN` | 50 | corte do Hacker News |
-| `NOTA_CORTE_BOM` / `CONCORDANCIA_MIN` | 6 / 0,70 | validação |
-
-Etiquetas do `agy`: `tecnica` (peso maior), `mercado`, `repositorio`, `decisao-projeto`, `descartar`.
-
-## Estrutura
+## Project structure
 
 ```
-newsletter_ia/       pacote (CLI em __main__.py)
-  fontes/            uma fonte por arquivo
-  coletar.py         orquestra fontes, isola falhas
-  triar.py           prompt, chamada ao agy, validação da resposta
-  selecao.py         candidatos e estados
-  validacao.py       amostra e concordância
-  pagina.py          página HTML com todas as edições
-tests/               unittest, sem rede
-systemd/             units de coleta e triagem
-skill/montar-edicao/ skill do Claude Code
-docs/                design (por quê, decisões) e plano de implementação
+newsletter_ia/       package (CLI in __main__.py)
+  fontes/            one file per source
+  coletar.py         runs the sources, isolates failures
+  triar.py           prompt, agy call, response validation
+  selecao.py         candidates and item states
+  validacao.py       sampling and agreement score
+  pagina.py          HTML page with every issue
+tests/               unittest, offline
+systemd/             collection and triage units
+skill/montar-edicao/ Claude Code skill
+docs/                design decisions and implementation plan
 ```
 
-## Limitações conhecidas
+## Known limitations
 
-- A validação inicial (0,75) teve pouco poder: 18 de 20 itens foram marcados "bom". O `agy` é mais rígido que o leitor.
-- Pendências menores registradas na revisão final: feed com data `-0000` derruba aquele feed; datas de RSS não são convertidas para UTC; o teto diário conta itens triados com sucesso, não enviados; títulos não têm quebras de linha removidas antes do prompt; acentos podem corromper em feed sem charset; `TimeoutStartSec=300` da coleta abaixo do pior caso.
-- A coleta do GitHub só vê repositórios criados no período; um repo antigo que explode depois não entra.
-- O `agy` dá nota 9 a 10 a repositórios novos e pessoais com README caprichado (0 a 1 estrela). Hoje a skill confere e descarta na mão; falta um filtro de estrelas mínimas na coleta.
+- The first validation (0.75) had little power: 18 of 20 sampled items were labeled "good".
+- `agy` gives 9–10 to brand-new personal repos with polished READMEs; a minimum-stars filter at collection time is still missing.
+- GitHub collection only sees repos created in the window, so an old repo that suddenly takes off is missed.
 
-## Próximos passos
+More details, and the plan for a magazine-style v2, in [`docs/design.md`](docs/design.md).
 
-v2 em formato revista (seções Radar, Científica, Programação, IA, Ideias inovadoras, Analistas e Hardware, ~1 h de leitura). Detalhes em [`docs/design.md`](docs/design.md#v2--formato-revista-definido-com-o-guilherme-em-2026-10-24-ainda-sem-plano-de-execução).
+## License
 
-## Licença
-
-Privado, sem licença de uso. Todos os direitos reservados.
+[MIT](LICENSE) © Guilherme Leite Cavalcanti
